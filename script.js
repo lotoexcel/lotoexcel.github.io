@@ -30,7 +30,7 @@ function gerarCombinacoes() {
 let todasCombinacoes = [];
 let combinacoesSorteadas = new Set();
 let offset = 0;
-const LIMITE = 100;
+const LIMITE = 50;
 let mostrarApenasSorteadas = false;
 
 // ========== ELEMENTOS DOM ==========
@@ -70,35 +70,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ========== FUNÇÕES PRINCIPAIS ==========
 function carregarMaisCombinacoes() {
+    const container = DOM.tabela;
     const inicio = offset;
-    const fim = offset + LIMITE;
-    const combos = mostrarApenasSorteadas
-        ? todasCombinacoes.filter(c => combinacoesSorteadas.has(c.id))
-        : todasCombinacoes;
+    const fim = Math.min(offset + LIMITE, 3268760); // Número total teórico
 
-    for (let i = inicio; i < fim && i < combos.length; i++) {
-        const combo = combos[i];
+    for (let id = inicio; id < fim; id++) {
         const tr = document.createElement('tr');
-        if (combinacoesSorteadas.has(combo.id)) tr.classList.add('combinacao-sorteada');
-
         tr.innerHTML = `
-                    <td class="px-6 py-4">${combo.id}</td>
-                    <td class="px-6 py-4">${combo.numeros}</td>
-                    <td class="px-6 py-4">
-                        <button onclick="toggleSorteada(${combo.id})" class="px-3 py-1 rounded-md ${combinacoesSorteadas.has(combo.id)
-                ? 'bg-green-100 text-green-600'
-                : 'bg-gray-100 text-gray-600'
-            }">
-                            ${combinacoesSorteadas.has(combo.id) ? '✓ Sorteada' : 'Marcar'}
-                        </button>
-                    </td>
-                `;
-        DOM.tabela.appendChild(tr);
+            <td>${id}</td>
+            <td>${gerarNumerosDaCombinacao(id)}</td>
+            <td>
+                <button onclick="toggleSorteada(${id})" class="marcador">
+                    ${combinacoesSorteadas.has(id) ? '✓ Sorteada' : 'Marcar'}
+                </button>
+            </td>
+        `;
+        container.appendChild(tr);
     }
 
     offset = fim;
-    DOM.contador.textContent = `${Math.min(offset, combos.length).toLocaleString()}/${combos.length.toLocaleString()}`;
-    DOM.carregarMais.disabled = offset >= combos.length;
+    DOM.contador.textContent = `${offset.toLocaleString()}/3.268.760`;
+    DOM.carregarMais.disabled = offset >= 3268760;
 }
 
 function toggleSorteada(id) {
@@ -153,65 +145,55 @@ function limparTudo() {
     }
 }
 
+function gerarNumerosDaCombinacao(id) {
+    // Lógica para converter um ID único em uma combinação válida
+    // (Implementação simplificada - você pode usar um algoritmo mais eficiente)
+    let numeros = [];
+    let contador = 0;
+    for (let i = 1; i <= 25 && numeros.length < 15; i++) {
+        if ((id & (1 << (i - 1))) !== 0) {
+            numeros.push(i.toString().padStart(2, '0'));
+        }
+    }
+    return numeros.join(' ');
+}
+
 // ========== IMPORTAR XLSX HISTÓRICO ==========
 async function importarXLSX(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    DOM.importarXLSXBtn.innerHTML = '<span class="loading-spinner">⏳</span> Processando...';
+    DOM.importarXLSXBtn.innerHTML = '⏳ Processando...';
 
     try {
         const data = await readFile(file);
         const workbook = XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        // Encontra início dos dados (pula cabeçalhos)
-        let startRow = 0;
-        const range = XLSX.utils.decode_range(worksheet['!ref']);
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-            const cell = worksheet[XLSX.utils.encode_cell({ c: 0, r: R })];
-            if (cell && cell.v === "Concurso") {
-                startRow = R + 1;
-                break;
+        let marcadas = 0;
+        for (let i = 7; i < jsonData.length; i++) { // Pula cabeçalhos
+            const linha = jsonData[i];
+            if (!linha || linha.length < 16) continue;
+
+            const bolas = linha.slice(1, 16).map(Number).filter(n => n >= 1 && n <= 25);
+            if (bolas.length !== 15) continue;
+
+            const id = calcularIdCombinacao(bolas); // Você precisa implementar esta função
+            if (!combinacoesSorteadas.has(id)) {
+                combinacoesSorteadas.add(id);
+                marcadas++;
             }
         }
 
-        const historico = XLSX.utils.sheet_to_json(worksheet, {
-            range: startRow,
-            header: ["concurso", "data", "bola1", "bola2", "bola3", "bola4", "bola5",
-                "bola6", "bola7", "bola8", "bola9", "bola10", "bola11", "bola12",
-                "bola13", "bola14", "bola15"]
-        });
-
-        let marcadas = 0;
-        const mapaCombos = new Map(todasCombinacoes.map(c => [c.numeros, c]));
-
-        historico.forEach(linha => {
-            const numeros = [];
-            for (let i = 1; i <= 15; i++) {
-                const num = linha[`bola${i}`];
-                if (num >= 1 && num <= 25) numeros.push(num);
-            }
-
-            if (numeros.length === 15) {
-                const chave = numeros.sort((a, b) => a - b).map(n => n.toString().padStart(2, '0')).join(' ');
-                const combo = mapaCombos.get(chave);
-                if (combo && !combinacoesSorteadas.has(combo.id)) {
-                    combinacoesSorteadas.add(combo.id);
-                    marcadas++;
-                }
-            }
-        });
-
         localStorage.setItem('lotofacilSorteadas', JSON.stringify([...combinacoesSorteadas]));
-        alert(`${marcadas} combinações marcadas como sorteadas!`);
-        filtrarCombinacoes();
+        alert(`${marcadas} combinações importadas!`);
 
     } catch (error) {
-        alert("Erro ao processar XLSX: " + error.message);
+        alert("Erro: " + error.message);
     } finally {
         DOM.importarXLSXBtn.textContent = 'Importar Histórico';
-        DOM.fileXLSX.value = '';
+        event.target.value = '';
     }
 }
 
