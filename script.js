@@ -2,9 +2,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const combinationsContainer = document.getElementById('combinations-container');
     const totalCombinationsEl = document.getElementById('total-combinations');
     const markedCombinationsEl = document.getElementById('marked-combinations');
-    const loadJsonBtn = document.getElementById('load-json-btn');
-    const jsonFileInput = document.getElementById('json-file-input');
-    const clearAllBtn = document.getElementById('clear-all-btn');
+    const loadJsonBtn = document.getElementById('load-json-btn'); // <--- RESTAURADO
+    const jsonFileInput = document.getElementById('json-file-input'); // <--- RESTAURADO
+    const clearAllBtn = document.getElementById('clear-all-btn'); // <--- RESTAURADO
     const toggleViewBtn = document.getElementById('toggle-view-btn');
     const filterInput = document.getElementById('filter-input');
     const applyFilterBtn = document.getElementById('apply-filter-btn');
@@ -14,14 +14,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Configuration ---
     const TOTAL_JSON_FILES = 32;
-    const JSON_FILE_PREFIX = 'json_combinations/combinations_';
+    const JSON_FILE_PREFIX = 'json_combinations/combinations_'; // Caminho para a subpasta
     const JSON_FILE_SUFFIX = '.json';
-    const MARKED_COMBINATIONS_FILE = 'marked_combinations.json';
+    const MARKED_COMBINATIONS_FILE = 'marked_combinations.json'; // Caminho para o arquivo gerado
     const COMBINATIONS_PER_BATCH_DISPLAY = 100; // Quantidade de combinações a renderizar por vez
     const MAX_COMBINATIONS_IN_MEMORY_FOR_FILTER = 500000; // Limite para carregar todos os JSONs para filtro.
-    // Se o totalCombinationsCount for maior que isso
-    // o filtro será apenas nas combinações carregadas.
-    // Ajuste conforme a memória do seu dispositivo.
+                                                        // Se o totalCombinationsCount for maior que isso
+                                                        // o filtro será apenas nas combinações carregadas.
+                                                        // Ajuste conforme a memória do seu dispositivo.
 
     let totalCombinationsCount = 0; // Será calculado após o carregamento inicial
     let allCombinations = []; // Armazena combinações carregadas do JSON
@@ -195,8 +195,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const initialBatch = allCombinations.slice(currentDisplayIndex, currentDisplayIndex + COMBINATIONS_PER_BATCH_DISPLAY);
         renderCombinationsBatch(initialBatch, false);
         currentDisplayIndex += initialBatch.length;
-        if (currentDisplayIndex < allCombinations.length || loadedFileIndex < TOTAL_JSON_FILES - 1) {
-            loadMoreBtn.classList.remove('hidden');
+        if (currentDisplayIndex < allCombinations.length || loadedFileIndex < TOTAL_JSON_FILES -1) {
+             loadMoreBtn.classList.remove('hidden');
         }
     };
 
@@ -225,9 +225,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Verifica se ainda há mais a carregar
         if (currentSourceIndex + renderedCount >= combinationsSource.length && loadedFileIndex >= TOTAL_JSON_FILES - 1 && currentFilterNumbers.length === 0 && !showingOnlyMarked) {
-            loadMoreBtn.classList.add('hidden');
+             loadMoreBtn.classList.add('hidden');
         } else if ((showingOnlyMarked || currentFilterNumbers.length > 0) && (currentSourceIndex + renderedCount >= combinationsSource.length)) {
-            loadMoreBtn.classList.add('hidden'); // Se estiver filtrado e não houver mais filtradas, esconde
+             loadMoreBtn.classList.add('hidden'); // Se estiver filtrado e não houver mais filtradas, esconde
         } else {
             loadMoreBtn.classList.remove('hidden');
         }
@@ -242,14 +242,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Garantir que todos os dados relevantes para o filtro estão carregados
         // Se a quantidade de combinações em memória for muito grande, o filtro será parcial.
         if (totalCombinationsCount < MAX_COMBINATIONS_IN_MEMORY_FOR_FILTER) {
-            const allDataLoaded = await ensureAllCombinationsLoaded();
-            if (!allDataLoaded) {
-                loadingMessage.textContent = "Não foi possível carregar todos os dados para o filtro. Filtrando apenas os carregados.";
-                // Continua com os dados que conseguiu carregar
-            }
+             const allDataLoaded = await ensureAllCombinationsLoaded();
+             if (!allDataLoaded) {
+                 loadingMessage.textContent = "Não foi possível carregar todos os dados para o filtro. Filtrando apenas os carregados.";
+                 // Continua com os dados que conseguiu carregar
+             }
         } else {
-            console.warn("Muitas combinações para carregar tudo para o filtro. Filtrando apenas as carregadas na memória.");
-            loadingMessage.textContent = "Filtrando apenas as combinações já carregadas na memória...";
+             console.warn("Muitas combinações para carregar tudo para o filtro. Filtrando apenas as carregadas na memória.");
+             loadingMessage.textContent = "Filtrando apenas as combinações já carregadas na memória...";
         }
 
 
@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (confirm('Tem certeza que deseja limpar TODAS as suas marcações? As combinações sorteadas (pré-marcadas) permanecerão marcadas.')) {
             // 1. Limpa as marcações do usuário do localStorage
             localStorage.removeItem('lotofacilMarkedIds');
-
+            
             // 2. Recarrega o conjunto de marcações (que agora incluirá apenas as pré-marcadas do JSON)
             getMarkedCombinations().then(initialSet => {
                 markedIds = initialSet; // Atualiza o Set principal com as combinações pré-marcadas
@@ -325,7 +325,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
     });
-
 
     toggleViewBtn.addEventListener('click', () => {
         showingOnlyMarked = !showingOnlyMarked;
