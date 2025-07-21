@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const JSON_FILE_PREFIX = 'json_combinations/combinations_';
     const JSON_FILE_SUFFIX = '.json';
     const MARKED_COMBINATIONS_FILE = 'marked_combinations.json';
-    const COMBINATIONS_PER_BATCH_DISPLAY = 100; // Quantidade de combinações a renderizar por vez
+    const COMBINATIONS_PER_BATCH_DISPLAY = 25; // Quantidade de combinações a renderizar por vez
 
     let allCombinationsLoadedForDisplay = []; // Armazena APENAS as combinações carregadas e prontas para exibição (não todas 3.2M)
     let markedIds = new Set(); // Armazena IDs de combinações marcadas
