@@ -1,43 +1,20 @@
-
-/* Custom styles */
 .combinacao-sorteada {
-    background-color: #fee2e2; /* Light red background */
-    color: #b91c1c; /* Darker red text */
-}
-
-.combinacao-sorteada td {
-    text-decoration: line-through; /* Strikethrough for marked combinations */
-}
-
-#tabelaCombinacoes tr:hover {
-    background-color: #f3f4f6; /* Light gray on hover */
+    background-color: #fee2e2;
+    color: #b91c1c;
+    text-decoration: line-through;
 }
 
 .loading-spinner {
-    animation: spin 1s linear infinite; /* Spinner animation */
+    animation: spin 1s linear infinite;
     display: inline-block;
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-.hidden {
-    display: none; /* Utility class to hide elements */
-}
-
-/* Responsiveness improvements */
-@media (max-width: 768px) {
-    .container {
-        padding: 0.5rem; /* Reduce padding on small screens */
+    from {
+        transform: rotate(0deg);
     }
-    
-    table {
-        font-size: 0.875rem; /* Smaller font size for table on small screens */
-    }
-    
-    td, th {
-        padding: 0.5rem; /* Smaller padding for table cells */
+
+    to {
+        transform: rotate(360deg);
     }
 }
