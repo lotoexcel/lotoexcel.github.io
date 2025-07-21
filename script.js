@@ -2,9 +2,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const combinationsContainer = document.getElementById('combinations-container');
     const totalCombinationsEl = document.getElementById('total-combinations');
     const markedCombinationsEl = document.getElementById('marked-combinations');
-    const loadJsonBtn = document.getElementById('load-json-btn'); // <--- RESTAURADO
-    const jsonFileInput = document.getElementById('json-file-input'); // <--- RESTAURADO
-    const clearAllBtn = document.getElementById('clear-all-btn'); // <--- RESTAURADO
+    const loadJsonBtn = document.getElementById('load-json-btn');
+    const jsonFileInput = document.getElementById('json-file-input');
+    const clearAllBtn = document.getElementById('clear-all-btn');
     const toggleViewBtn = document.getElementById('toggle-view-btn');
     const filterInput = document.getElementById('filter-input');
     const applyFilterBtn = document.getElementById('apply-filter-btn');
@@ -14,23 +14,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Configuration ---
     const TOTAL_JSON_FILES = 32;
-    const JSON_FILE_PREFIX = 'json_combinations/combinations_'; // Caminho para a subpasta
+    const JSON_FILE_PREFIX = 'json_combinations/combinations_';
     const JSON_FILE_SUFFIX = '.json';
-    const MARKED_COMBINATIONS_FILE = 'marked_combinations.json'; // Caminho para o arquivo gerado
+    const MARKED_COMBINATIONS_FILE = 'marked_combinations.json';
     const COMBINATIONS_PER_BATCH_DISPLAY = 100; // Quantidade de combinações a renderizar por vez
-    const MAX_COMBINATIONS_IN_MEMORY_FOR_FILTER = 500000; // Limite para carregar todos os JSONs para filtro.
-                                                        // Se o totalCombinationsCount for maior que isso
-                                                        // o filtro será apenas nas combinações carregadas.
-                                                        // Ajuste conforme a memória do seu dispositivo.
 
-    let totalCombinationsCount = 0; // Será calculado após o carregamento inicial
-    let allCombinations = []; // Armazena combinações carregadas do JSON
+    let allCombinationsLoadedForDisplay = []; // Armazena APENAS as combinações carregadas e prontas para exibição (não todas 3.2M)
     let markedIds = new Set(); // Armazena IDs de combinações marcadas
-    let loadedFileIndex = -1; // Rastreia qual arquivo JSON foi carregado por último
-    let currentDisplayIndex = 0; // Rastreia o índice inicial para o batch de exibição atual
+    let loadedFileIndex = -1; // Rastreia qual arquivo JSON foi carregado por último para o carregamento inicial/infinito
+    let currentDisplayIndex = 0; // Rastreia o índice inicial para o batch de exibição atual na lista ATUALMENTE sendo exibida
     let showingOnlyMarked = false;
     let currentFilterNumbers = []; // Armazena números para filtragem (ex: [1, 2, 3])
-    let filteredCombinations = []; // Armazena as combinações após a aplicação do filtro
+    let currentSearchCombinations = []; // Armazena o resultado completo da busca/filtro (seja todas, ou apenas marcadas, ou filtradas)
+    let isSearching = false; // Flag para evitar buscas concorrentes
 
     // --- LocalStorage Management ---
     const getMarkedCombinations = async () => {
@@ -56,7 +52,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return initialMarkedSet;
     };
 
-    // Inicializa markedIds esperando a função assíncrona
     markedIds = await getMarkedCombinations();
 
     const saveMarkedCombinations = () => {
@@ -69,8 +64,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         markedCombinationsEl.textContent = markedIds.size.toLocaleString();
     };
 
-    const updateTotalCombinationsCount = () => {
-        totalCombinationsEl.textContent = totalCombinationsCount.toLocaleString();
+    const updateTotalCombinationsCount = (count) => {
+        totalCombinationsEl.textContent = count.toLocaleString();
     };
 
     const formatCombination = (numbers) => {
@@ -94,26 +89,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         return div;
     };
 
-    // Função para renderizar as combinações em "batch" para evitar travamentos
-    const renderCombinationsBatch = (combinations, append = true, startIndex = 0) => {
+    const renderCombinationsBatch = (combinations, append = true) => {
         if (!append) {
             combinationsContainer.innerHTML = '';
         }
         loadingMessage.classList.add('hidden');
 
         const fragment = document.createDocumentFragment();
-        let renderedCount = 0;
-
-        // Renderiza apenas o que cabe em um batch
-        for (let i = startIndex; i < combinations.length && renderedCount < COMBINATIONS_PER_BATCH_DISPLAY; i++) {
-            const comb = combinations[i];
+        combinations.forEach(comb => {
             const element = createCombinationElement(comb.id, comb.numbers);
             fragment.appendChild(element);
-            renderedCount++;
-        }
+        });
         combinationsContainer.appendChild(fragment);
 
-        return renderedCount; // Retorna quantos foram renderizados
+        // Define a visibilidade do botão "Carregar Mais"
+        if (currentSearchCombinations.length > currentDisplayIndex) {
+            loadMoreBtn.classList.remove('hidden');
+        } else {
+            loadMoreBtn.classList.add('hidden');
+        }
     };
 
     const toggleMarked = (id, element) => {
@@ -129,38 +123,82 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Data Loading and Filtering ---
 
-    // Nova função para carregar todos os JSONs se o filtro exigir
-    const ensureAllCombinationsLoaded = async () => {
-        if (loadedFileIndex < TOTAL_JSON_FILES - 1) {
-            loadingMessage.textContent = "Carregando todas as combinações para aplicar o filtro. Isso pode demorar...";
-            loadingMessage.classList.remove('hidden');
-            loadMoreBtn.classList.add('hidden'); // Esconde o botão durante o carregamento completo
+    // Função para buscar e filtrar em todos os arquivos JSON
+    const performFullSearch = async () => {
+        if (isSearching) return; // Evita múltiplas buscas ao mesmo tempo
+        isSearching = true;
 
-            for (let i = loadedFileIndex + 1; i < TOTAL_JSON_FILES; i++) {
-                const loaded = await loadNextJsonFile();
-                if (!loaded) {
-                    console.error("Não foi possível carregar todos os arquivos JSON para o filtro.");
-                    loadingMessage.textContent = "Erro ao carregar todos os dados para o filtro.";
-                    return false;
+        combinationsContainer.innerHTML = '';
+        loadingMessage.textContent = "Buscando combinações... Aguarde (pode levar alguns segundos).";
+        loadingMessage.classList.remove('hidden');
+        loadMoreBtn.classList.add('hidden');
+        updateTotalCombinationsCount(0); // Reseta o contador enquanto busca
+
+        currentSearchCombinations = [];
+        let totalProcessedCombinations = 0;
+
+        for (let i = 0; i < TOTAL_JSON_FILES; i++) {
+            loadingMessage.textContent = `Buscando combinações... Processando arquivo ${i + 1} de ${TOTAL_JSON_FILES}.`;
+            // Pequeno delay para permitir que a UI atualize e evitar bloqueio
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            try {
+                const filePath = `${JSON_FILE_PREFIX}${i}${JSON_FILE_SUFFIX}`;
+                const response = await fetch(filePath);
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP! status: ${response.status} para ${filePath}`);
                 }
+                const data = await response.json();
+
+                data.forEach((numbers, indexInFile) => {
+                    const id = `${i}-${indexInFile}`; // Unique ID: "fileIndex-combinationIndex"
+                    totalProcessedCombinations++; // Conta todas as combinações processadas
+
+                    let matchesFilter = true;
+                    if (currentFilterNumbers.length > 0) {
+                        matchesFilter = currentFilterNumbers.every(filterNum => numbers.includes(filterNum));
+                    }
+
+                    let matchesMarked = true;
+                    if (showingOnlyMarked) {
+                        matchesMarked = markedIds.has(id);
+                    }
+
+                    if (matchesFilter && matchesMarked) {
+                        currentSearchCombinations.push({ id, numbers });
+                    }
+                });
+
+                updateTotalCombinationsCount(currentSearchCombinations.length); // Atualiza o contador com os resultados encontrados
+
+            } catch (error) {
+                console.error(`Erro ao carregar ou filtrar arquivo JSON ${i}:`, error);
+                loadingMessage.textContent = `Erro ao carregar combinações do arquivo ${i + 1}.`;
+                // Continua para o próximo arquivo, não para a busca completamente
             }
-            loadingMessage.classList.add('hidden'); // Esconde após carregar
         }
-        return true;
+
+        currentDisplayIndex = 0; // Resetar o índice de exibição para a nova lista de resultados
+        renderCombinationsBatch(currentSearchCombinations.slice(currentDisplayIndex, currentDisplayIndex + COMBINATIONS_PER_BATCH_DISPLAY), false);
+        currentDisplayIndex += COMBINATIONS_PER_BATCH_DISPLAY;
+
+        loadingMessage.classList.add('hidden');
+        isSearching = false;
+        // Se houver resultados, o botão 'Carregar Mais' será gerenciado por renderCombinationsBatch
+        // Se não houver, ele permanecerá hidden
     };
 
 
-    const loadNextJsonFile = async () => {
+    const loadNextJsonFileForInitialDisplay = async () => {
         loadedFileIndex++;
         if (loadedFileIndex >= TOTAL_JSON_FILES) {
-            console.log('Todos os arquivos JSON foram carregados.');
-            loadMoreBtn.classList.add('hidden');
+            console.log('Todos os arquivos JSON foram carregados para exibição inicial/rolagem.');
             return false;
         }
 
         loadingMessage.textContent = `Carregando arquivo ${loadedFileIndex + 1} de ${TOTAL_JSON_FILES}...`;
         loadingMessage.classList.remove('hidden');
-        loadMoreBtn.classList.add('hidden');
+        loadMoreBtn.classList.add('hidden'); // Esconde temporariamente
 
         try {
             const filePath = `${JSON_FILE_PREFIX}${loadedFileIndex}${JSON_FILE_SUFFIX}`;
@@ -175,11 +213,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 numbers: numbers
             }));
 
-            allCombinations = allCombinations.concat(newCombinations);
-            totalCombinationsCount = allCombinations.length;
-            updateTotalCombinationsCount();
+            allCombinationsLoadedForDisplay = allCombinationsLoadedForDisplay.concat(newCombinations);
+            updateTotalCombinationsCount(allCombinationsLoadedForDisplay.length);
 
-            console.log(`Carregado ${filePath}. Total de combinações em memória: ${totalCombinationsCount}`);
+            console.log(`Carregado ${filePath}. Total de combinações em memória para exibição: ${allCombinationsLoadedForDisplay.length}`);
             loadingMessage.classList.add('hidden');
             return true;
         } catch (error) {
@@ -189,94 +226,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
+
     const displayInitialCombinations = async () => {
-        await loadNextJsonFile();
-        currentDisplayIndex = 0;
-        const initialBatch = allCombinations.slice(currentDisplayIndex, currentDisplayIndex + COMBINATIONS_PER_BATCH_DISPLAY);
-        renderCombinationsBatch(initialBatch, false);
-        currentDisplayIndex += initialBatch.length;
-        if (currentDisplayIndex < allCombinations.length || loadedFileIndex < TOTAL_JSON_FILES -1) {
+        await loadNextJsonFileForInitialDisplay();
+        currentSearchCombinations = allCombinationsLoadedForDisplay; // A lista inicial é a lista de busca atual
+        currentDisplayIndex = 0; // Sempre começar do zero para a lista atual
+        
+        renderCombinationsBatch(currentSearchCombinations.slice(currentDisplayIndex, currentDisplayIndex + COMBINATIONS_PER_BATCH_DISPLAY), false);
+        currentDisplayIndex += COMBINATIONS_PER_BATCH_DISPLAY;
+        
+        // Garante que o total de combinações exibidas na página principal esteja correto
+        // para a primeira carga. O total geral da Lotofácil (3.2M) será exibido quando tivermos a contagem real.
+        // Por agora, mostra o total de combinacoes carregadas no batch inicial.
+        updateTotalCombinationsCount(currentSearchCombinations.length); 
+
+        if (currentSearchCombinations.length > currentDisplayIndex || loadedFileIndex < TOTAL_JSON_FILES - 1) {
              loadMoreBtn.classList.remove('hidden');
+        } else {
+             loadMoreBtn.classList.add('hidden');
         }
     };
 
     const loadMoreCombinations = async () => {
-        let combinationsSource = allCombinations; // Por padrão, carrega do allCombinations
-        let currentSourceIndex = currentDisplayIndex; // Onde começar a carregar
+        if (isSearching) return; // Não carrega mais enquanto uma busca está ativa
 
-        // Se estivermos em um modo filtrado, o "load more" deve continuar do resultado do filtro
+        // Se estiver em modo filtrado ou apenas marcadas, carregue mais do resultado da busca
         if (showingOnlyMarked || currentFilterNumbers.length > 0) {
-            combinationsSource = filteredCombinations; // Fonte agora são as filtradas
-            currentSourceIndex = combinationsContainer.children.length; // Carrega a partir do que já está na tela
-        }
+            const nextBatch = currentSearchCombinations.slice(currentDisplayIndex, currentDisplayIndex + COMBINATIONS_PER_BATCH_DISPLAY);
+            renderCombinationsBatch(nextBatch, true);
+            currentDisplayIndex += nextBatch.length;
+            // Ocultar botão 'Carregar Mais' se todos os resultados filtrados forem exibidos
+            if (currentDisplayIndex >= currentSearchCombinations.length) {
+                loadMoreBtn.classList.add('hidden');
+            }
+        } else {
+            // Se não estiver filtrando, continue carregando arquivos JSON
+            let combinationsToLoad = allCombinationsLoadedForDisplay.slice(currentDisplayIndex, currentDisplayIndex + COMBINATIONS_PER_BATCH_DISPLAY);
 
-        let combinationsToLoad = combinationsSource.slice(currentSourceIndex, currentSourceIndex + COMBINATIONS_PER_BATCH_DISPLAY);
+            if (combinationsToLoad.length < COMBINATIONS_PER_BATCH_DISPLAY && loadedFileIndex < TOTAL_JSON_FILES - 1) {
+                const loaded = await loadNextJsonFileForInitialDisplay();
+                if (loaded) {
+                    combinationsToLoad = allCombinationsLoadedForDisplay.slice(currentDisplayIndex, currentDisplayIndex + COMBINATIONS_PER_BATCH_DISPLAY);
+                }
+            }
 
-        // Se não houver combinações suficientes no 'allCombinations' e não estivermos filtrando
-        if (combinationsToLoad.length < COMBINATIONS_PER_BATCH_DISPLAY && loadedFileIndex < TOTAL_JSON_FILES - 1 && !showingOnlyMarked && currentFilterNumbers.length === 0) {
-            const loaded = await loadNextJsonFile();
-            if (loaded) {
-                combinationsToLoad = allCombinations.slice(currentSourceIndex, currentSourceIndex + COMBINATIONS_PER_BATCH_DISPLAY);
+            renderCombinationsBatch(combinationsToLoad, true);
+            currentDisplayIndex += combinationsToLoad.length;
+
+            if (currentDisplayIndex >= allCombinationsLoadedForDisplay.length && loadedFileIndex >= TOTAL_JSON_FILES - 1) {
+                loadMoreBtn.classList.add('hidden');
+            } else {
+                loadMoreBtn.classList.remove('hidden');
             }
         }
-
-        const renderedCount = renderCombinationsBatch(combinationsToLoad, true);
-        currentDisplayIndex += renderedCount; // Atualiza o índice para o próximo carregamento
-
-        // Verifica se ainda há mais a carregar
-        if (currentSourceIndex + renderedCount >= combinationsSource.length && loadedFileIndex >= TOTAL_JSON_FILES - 1 && currentFilterNumbers.length === 0 && !showingOnlyMarked) {
-             loadMoreBtn.classList.add('hidden');
-        } else if ((showingOnlyMarked || currentFilterNumbers.length > 0) && (currentSourceIndex + renderedCount >= combinationsSource.length)) {
-             loadMoreBtn.classList.add('hidden'); // Se estiver filtrado e não houver mais filtradas, esconde
-        } else {
-            loadMoreBtn.classList.remove('hidden');
-        }
-    };
-
-
-    const applyFilterAndRedraw = async () => {
-        loadingMessage.textContent = "Aplicando filtro...";
-        loadingMessage.classList.remove('hidden');
-        loadMoreBtn.classList.add('hidden'); // Esconde enquanto filtra
-
-        // Garantir que todos os dados relevantes para o filtro estão carregados
-        // Se a quantidade de combinações em memória for muito grande, o filtro será parcial.
-        if (totalCombinationsCount < MAX_COMBINATIONS_IN_MEMORY_FOR_FILTER) {
-             const allDataLoaded = await ensureAllCombinationsLoaded();
-             if (!allDataLoaded) {
-                 loadingMessage.textContent = "Não foi possível carregar todos os dados para o filtro. Filtrando apenas os carregados.";
-                 // Continua com os dados que conseguiu carregar
-             }
-        } else {
-             console.warn("Muitas combinações para carregar tudo para o filtro. Filtrando apenas as carregadas na memória.");
-             loadingMessage.textContent = "Filtrando apenas as combinações já carregadas na memória...";
-        }
-
-
-        // Aplicar o filtro sobre `allCombinations` (agora possivelmente completo)
-        let tempFiltered = allCombinations;
-
-        if (currentFilterNumbers.length > 0) {
-            tempFiltered = tempFiltered.filter(comb =>
-                currentFilterNumbers.every(filterNum => comb.numbers.includes(filterNum))
-            );
-        }
-
-        if (showingOnlyMarked) {
-            tempFiltered = tempFiltered.filter(comb => markedIds.has(comb.id));
-        }
-
-        filteredCombinations = tempFiltered; // Salva o resultado do filtro
-        currentDisplayIndex = 0; // Reseta o índice de exibição para a nova lista filtrada
-
-        renderCombinationsBatch(filteredCombinations, false, 0); // Renderiza o primeiro batch dos filtrados
-
-        if (filteredCombinations.length > COMBINATIONS_PER_BATCH_DISPLAY) {
-            loadMoreBtn.classList.remove('hidden'); // Mostra o botão se houver mais resultados filtrados
-        } else {
-            loadMoreBtn.classList.add('hidden');
-        }
-        loadingMessage.classList.add('hidden'); // Esconde a mensagem de "aplicando filtro"
     };
 
 
@@ -294,7 +296,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (Array.isArray(loadedIds)) {
                         loadedIds.forEach(id => markedIds.add(String(id)));
                         saveMarkedCombinations();
-                        applyFilterAndRedraw(); // Re-renderiza para mostrar os novos itens marcados
+                        // Após carregar um novo JSON de marcadas, refaça a busca para atualizar a exibição
+                        performFullSearch(); 
                         alert(`Successfully loaded ${loadedIds.length} IDs from JSON!`);
                     } else {
                         alert('Invalid JSON file format. Expected an array of IDs.');
@@ -310,14 +313,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     clearAllBtn.addEventListener('click', () => {
         if (confirm('Tem certeza que deseja limpar TODAS as suas marcações? As combinações sorteadas (pré-marcadas) permanecerão marcadas.')) {
-            // 1. Limpa as marcações do usuário do localStorage
             localStorage.removeItem('lotofacilMarkedIds');
             
-            // 2. Recarrega o conjunto de marcações (que agora incluirá apenas as pré-marcadas do JSON)
             getMarkedCombinations().then(initialSet => {
-                markedIds = initialSet; // Atualiza o Set principal com as combinações pré-marcadas
-                saveMarkedCombinations(); // Salva o estado atual (apenas pré-marcadas) no localStorage
-                applyFilterAndRedraw(); // Re-renderiza para refletir as mudanças
+                markedIds = initialSet;
+                saveMarkedCombinations();
+                // Após limpar, refaça a busca para atualizar a exibição
+                performFullSearch(); 
                 alert('Todas as suas marcações foram limpas! As combinações pré-marcadas permanecem.');
             }).catch(error => {
                 console.error("Erro ao limpar e recarregar marcações:", error);
@@ -328,13 +330,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     toggleViewBtn.addEventListener('click', () => {
         showingOnlyMarked = !showingOnlyMarked;
-        // Removida a linha que altera o textContent do botão para mantê-lo fixo
-        // toggleViewBtn.textContent = showingOnlyMarked ? 'Show All Combinations' : 'Show Only Marked';
         toggleViewBtn.classList.toggle('bg-gray-500', showingOnlyMarked);
         toggleViewBtn.classList.toggle('hover:bg-gray-600', showingOnlyMarked);
         toggleViewBtn.classList.toggle('bg-green-500', !showingOnlyMarked);
         toggleViewBtn.classList.toggle('hover:bg-green-600', !showingOnlyMarked);
-        applyFilterAndRedraw();
+        
+        // Sempre que a view muda (todas/marcadas), aciona a busca completa
+        performFullSearch();
     });
 
     applyFilterBtn.addEventListener('click', () => {
@@ -343,23 +345,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             const parsedNumbers = rawInput.split(' ').map(numStr => parseInt(numStr, 10)).filter(num => !isNaN(num) && num >= 1 && num <= 25);
             if (parsedNumbers.length > 0 && parsedNumbers.length <= 15) {
                 currentFilterNumbers = parsedNumbers.sort((a, b) => a - b);
-                applyFilterAndRedraw();
+                // Aplica o filtro desencadeando a busca completa
+                performFullSearch();
             } else {
                 alert('Por favor, insira números válidos (1-25) separados por espaços, até 15 números.');
             }
         } else {
             currentFilterNumbers = []; // Limpa o filtro se a entrada estiver vazia
-            applyFilterAndRedraw();
+            // Limpa o filtro desencadeando a busca completa
+            performFullSearch();
         }
     });
 
     clearFilterBtn.addEventListener('click', () => {
         filterInput.value = '';
         currentFilterNumbers = [];
-        applyFilterAndRedraw();
+        // Limpa o filtro desencadeando a busca completa
+        performFullSearch();
     });
 
     // --- Initial Setup ---
     updateMarkedCount();
+    // A carga inicial agora é apenas a primeira parte do "Carregar Mais"
+    // ou a exibição de resultados de uma busca se o filtro estiver ativo.
+    // Para iniciar, vamos chamar performFullSearch() sem filtro para exibir tudo.
+    // Se você quer que o padrão inicial seja apenas o "Carregar Mais" sem pré-filtragem,
+    // chame displayInitialCombinations()
     displayInitialCombinations();
 });
