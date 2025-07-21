@@ -1,20 +1,32 @@
-.combinacao-sorteada {
-    background-color: #fee2e2;
-    color: #b91c1c;
+.combination-item {
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0; /* Tailwind: border-gray-200 */
+    border-radius: 6px; /* Tailwind: rounded-lg */
+    background-color: #f8fafc; /* Tailwind: bg-slate-50 */
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+    user-select: none; /* Prevent text selection */
+}
+.combination-item:hover {
+    background-color: #f0f4f8; /* Tailwind: bg-gray-100 */
+}
+.combination-item.marked {
+    background-color: #fee2e2; /* Tailwind: bg-red-100 */
+    border-color: #ef4444; /* Tailwind: border-red-500 */
     text-decoration: line-through;
+    color: #ef4444; /* Tailwind: text-red-500 */
 }
-
-.loading-spinner {
-    animation: spin 1s linear infinite;
-    display: inline-block;
+/* Custom scrollbar for better UX on desktop, but minimal impact on mobile */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
 }
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9; /* Tailwind: bg-slate-100 */
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1; /* Tailwind: bg-slate-300 */
+    border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8; /* Tailwind: bg-slate-400 */
 }
