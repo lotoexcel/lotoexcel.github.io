@@ -1,0 +1,43 @@
+
+/* Custom styles */
+.combinacao-sorteada {
+    background-color: #fee2e2; /* Light red background */
+    color: #b91c1c; /* Darker red text */
+}
+
+.combinacao-sorteada td {
+    text-decoration: line-through; /* Strikethrough for marked combinations */
+}
+
+#tabelaCombinacoes tr:hover {
+    background-color: #f3f4f6; /* Light gray on hover */
+}
+
+.loading-spinner {
+    animation: spin 1s linear infinite; /* Spinner animation */
+    display: inline-block;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.hidden {
+    display: none; /* Utility class to hide elements */
+}
+
+/* Responsiveness improvements */
+@media (max-width: 768px) {
+    .container {
+        padding: 0.5rem; /* Reduce padding on small screens */
+    }
+    
+    table {
+        font-size: 0.875rem; /* Smaller font size for table on small screens */
+    }
+    
+    td, th {
+        padding: 0.5rem; /* Smaller padding for table cells */
+    }
+}
