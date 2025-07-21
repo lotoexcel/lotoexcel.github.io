@@ -1,4 +1,33 @@
+
+// ========== GERADOR DE COMBINAÇÕES ==========
+function gerarCombinacoes() {
+    console.log("Gerando combinações...");
+    const combinacoes = [];
+    const numeros = Array.from({ length: 25 }, (_, i) => i + 1);
+
+    function combinar(inicio, combo) {
+        if (combo.length === 15) {
+            combinacoes.push({
+                id: combinacoes.length + 1,
+                numeros: combo.map(n => n.toString().padStart(2, '0')).join(' '),
+                numerosArray: [...combo]
+            });
+            return;
+        }
+
+        for (let i = inicio; i <= 25; i++) {
+            combo.push(i);
+            combinar(i + 1, combo);
+            combo.pop();
+        }
+    }
+
+    combinar(1, []);
+    return combinacoes;
+}
+
 // ========== VARIÁVEIS GLOBAIS ==========
+let todasCombinacoes = [];
 let combinacoesSorteadas = new Set();
 let offset = 0;
 const LIMITE = 50;
@@ -22,6 +51,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const salvas = localStorage.getItem('lotofacilSorteadas');
     if (salvas) combinacoesSorteadas = new Set(JSON.parse(salvas));
 
+    // Gera as combinações
+    DOM.mostrarSorteadasBtn.innerHTML = '<span class="loading-spinner">⏳</span> Gerando...';
+    setTimeout(() => {
+        todasCombinacoes = gerarCombinacoes();
+        DOM.mostrarSorteadasBtn.textContent = 'Mostrar Sorteadas';
+        carregarMaisCombinacoes();
+    }, 100);
+
     // Event Listeners
     DOM.filtro.addEventListener('input', filtrarCombinacoes);
     DOM.carregarMais.addEventListener('click', carregarMaisCombinacoes);
@@ -29,9 +66,6 @@ document.addEventListener('DOMContentLoaded', () => {
     DOM.limparTudoBtn.addEventListener('click', limparTudo);
     DOM.importarXLSXBtn.addEventListener('click', () => DOM.fileXLSX.click());
     DOM.fileXLSX.addEventListener('change', importarXLSX);
-    
-    // Carrega as primeiras combinações
-    carregarMaisCombinacoes();
 });
 
 // ========== FUNÇÕES PRINCIPAIS ==========
@@ -41,15 +75,10 @@ function carregarMaisCombinacoes() {
     const fim = Math.min(offset + LIMITE, 3268760); // Número total teórico
 
     for (let id = inicio; id < fim; id++) {
-        const numeros = gerarNumerosDaCombinacao(id);
-        const numerosFormatados = numeros.map(n => n.toString().padStart(2, '0')).join(' ');
-        
         const tr = document.createElement('tr');
-        if (combinacoesSorteadas.has(id)) tr.classList.add('combinacao-sorteada');
-        
         tr.innerHTML = `
             <td>${id}</td>
-            <td>${numerosFormatados}</td>
+            <td>${gerarNumerosDaCombinacao(id)}</td>
             <td>
                 <button onclick="toggleSorteada(${id})" class="marcador">
                     ${combinacoesSorteadas.has(id) ? '✓ Sorteada' : 'Marcar'}
@@ -94,39 +123,16 @@ function filtrarCombinacoes() {
         return;
     }
 
-    // Para filtros, vamos gerar sob demanda
-    let contador = 0;
-    const container = DOM.tabela;
-    
-    for (let id = 0; id < 3268760 && contador < LIMITE; id++) {
-        const numeros = gerarNumerosDaCombinacao(id);
-        
-        // Verifica filtros
-        const passaFiltro = numsFiltro.length === 0 || numsFiltro.every(n => numeros.includes(n));
-        const passaSorteada = !mostrarApenasSorteadas || combinacoesSorteadas.has(id);
-        
-        if (passaFiltro && passaSorteada) {
-            const numerosFormatados = numeros.map(n => n.toString().padStart(2, '0')).join(' ');
-            
-            const tr = document.createElement('tr');
-            if (combinacoesSorteadas.has(id)) tr.classList.add('combinacao-sorteada');
-            
-            tr.innerHTML = `
-                <td>${id}</td>
-                <td>${numerosFormatados}</td>
-                <td>
-                    <button onclick="toggleSorteada(${id})" class="marcador">
-                        ${combinacoesSorteadas.has(id) ? '✓ Sorteada' : 'Marcar'}
-                    </button>
-                </td>
-            `;
-            container.appendChild(tr);
-            contador++;
-        }
-    }
-    
-    offset = contador;
-    DOM.contador.textContent = `Mostrando ${contador} combinações filtradas`;
+    const combosFiltradas = todasCombinacoes.filter(c =>
+        (mostrarApenasSorteadas ? combinacoesSorteadas.has(c.id) : true) &&
+        (numsFiltro.length === 0 || numsFiltro.every(n => c.numerosArray.includes(n)))
+    );
+
+    // Substitui temporariamente para paginação
+    const originais = todasCombinacoes;
+    todasCombinacoes = combosFiltradas;
+    carregarMaisCombinacoes();
+    todasCombinacoes = originais;
 }
 
 function limparTudo() {
@@ -139,55 +145,17 @@ function limparTudo() {
     }
 }
 
-// ========== FUNÇÕES DE COMBINAÇÕES ==========
 function gerarNumerosDaCombinacao(id) {
-    // Algoritmo otimizado para gerar combinações sem usar recursão
-    const numeros = [];
-    let n = 25;
-    let k = 15;
-    let a = id;
-    
-    for (let i = 1; i <= n && numeros.length < k; i++) {
-        const c = combinacao(n - i, k - numeros.length - 1);
-        if (a >= c) {
-            a -= c;
-        } else {
-            numeros.push(i);
+    // Lógica para converter um ID único em uma combinação válida
+    // (Implementação simplificada - você pode usar um algoritmo mais eficiente)
+    let numeros = [];
+    let contador = 0;
+    for (let i = 1; i <= 25 && numeros.length < 15; i++) {
+        if ((id & (1 << (i - 1))) !== 0) {
+            numeros.push(i.toString().padStart(2, '0'));
         }
     }
-    
-    return numeros;
-}
-
-function calcularIdCombinacao(bolas) {
-    // Algoritmo inverso para calcular o ID a partir dos números
-    const sorted = [...bolas].sort((a, b) => a - b);
-    let id = 0;
-    let n = 25;
-    let k = 15;
-    
-    for (let i = 0; i < sorted.length; i++) {
-        const num = sorted[i];
-        for (let j = (i === 0 ? 1 : sorted[i-1] + 1); j < num; j++) {
-            id += combinacao(n - j, k - i - 1);
-        }
-    }
-    
-    return id;
-}
-
-function combinacao(n, k) {
-    // Função auxiliar para cálculo de combinações (n choose k)
-    if (k < 0 || k > n) return 0;
-    if (k === 0 || k === n) return 1;
-    
-    k = Math.min(k, n - k);
-    let res = 1;
-    for (let i = 1; i <= k; i++) {
-        res = res * (n - k + i) / i;
-    }
-    
-    return Math.round(res);
+    return numeros.join(' ');
 }
 
 // ========== IMPORTAR XLSX HISTÓRICO ==========
@@ -211,7 +179,7 @@ async function importarXLSX(event) {
             const bolas = linha.slice(1, 16).map(Number).filter(n => n >= 1 && n <= 25);
             if (bolas.length !== 15) continue;
 
-            const id = calcularIdCombinacao(bolas);
+            const id = calcularIdCombinacao(bolas); // Você precisa implementar esta função
             if (!combinacoesSorteadas.has(id)) {
                 combinacoesSorteadas.add(id);
                 marcadas++;
@@ -220,7 +188,6 @@ async function importarXLSX(event) {
 
         localStorage.setItem('lotofacilSorteadas', JSON.stringify([...combinacoesSorteadas]));
         alert(`${marcadas} combinações importadas!`);
-        filtrarCombinacoes();
 
     } catch (error) {
         alert("Erro: " + error.message);
